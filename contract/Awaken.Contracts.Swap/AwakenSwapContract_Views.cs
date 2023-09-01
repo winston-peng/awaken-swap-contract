@@ -33,7 +33,6 @@ namespace Awaken.Contracts.Swap
 
             return results;
         }
-        
 
         public override GetTotalSupplyOutput GetTotalSupply(StringList input)
         {

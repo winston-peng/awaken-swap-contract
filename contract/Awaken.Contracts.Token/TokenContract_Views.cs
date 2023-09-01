@@ -52,5 +52,6 @@ namespace Awaken.Contracts.Token
         {
             return State.Owner.Value;
         }
+        
     }
 }
