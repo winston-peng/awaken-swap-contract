@@ -15,7 +15,6 @@ namespace Awaken.Contracts.Token
             State.MinterMap[input.Owner] = true;
             return new Empty();
         }
-        
-        
+
     }
 }
