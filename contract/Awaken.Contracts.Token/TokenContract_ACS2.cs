@@ -78,5 +78,6 @@ namespace Awaken.Contracts.Token
                 }
             };
         }
+        
     }
 }

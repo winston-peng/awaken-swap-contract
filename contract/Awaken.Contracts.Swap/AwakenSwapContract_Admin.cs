@@ -26,5 +26,6 @@ namespace Awaken.Contracts.Swap
             State.Admin.Value = input;
             return new Empty();
         }
+        
     }
 }
