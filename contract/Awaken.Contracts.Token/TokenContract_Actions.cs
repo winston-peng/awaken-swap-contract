@@ -45,7 +45,6 @@ namespace Awaken.Contracts.Token
             });
             return new Empty();
         }
-
         
         public override Empty Issue(IssueInput input)
         {
