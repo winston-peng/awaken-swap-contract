@@ -94,5 +94,6 @@ namespace Awaken.Contracts.Token
         {
             Assert( Context.Sender == issuer , "No permission.");
         }
+        
     }
 }
