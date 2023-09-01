@@ -61,5 +61,6 @@ namespace Awaken.Contracts.Swap
 
             return pairVirtualAddress;
         }
+        
     }
 }
