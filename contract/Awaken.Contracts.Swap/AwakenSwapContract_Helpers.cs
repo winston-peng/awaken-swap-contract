@@ -33,6 +33,15 @@ namespace Awaken.Contracts.Swap
             return symbols.OrderBy(s => s).ToArray();
         }
 
+        /// <summary>
+        /// Two cases,ex: 1.AAA-1-ELF 2.ELF-AAA-1
+        /// If the middle position is a number, the first two digits form the symbol of the NFT.
+        /// If not, the last two digits form the symbol of the NFT.
+        /// For example, if the given list is ["AAA","1","ELF"], the first two digits form the nft symbol（"AAA-1"）, the last digits form the ft symbol ("ELF"),
+        /// if the given list is ["ELF","AAA","1"], the first digits form the ft symbol("ELF"), the last two digits form the nft symbol ("AAA-1").
+        /// </summary>
+        /// <param name="symbols"></param>
+        /// <returns></returns>
         private string[] GetAndSortSymbol(params string[] symbols)
         {
             var symbolA = symbols[1].All(IsValidItemIdChar)
@@ -42,6 +51,13 @@ namespace Awaken.Contracts.Swap
             return SortSymbols(symbolA, symbolB);
         }
 
+        /// <summary>
+        /// Ex: ABC-1-DEF-1
+        /// The first two digits and the last two digits respectively form the symbol of the NFT.
+        /// For example, if the given list is ["ABC","1","DEF","1"], the first nft symbol is "ABC-1", the second nft symbol is "DEF-1".
+        /// </summary>
+        /// <param name="symbols"></param>
+        /// <returns></returns>
         private string[] GetAndSortNftSymbol(params string[] symbols)
         {
             var symbolA = $"{symbols[0]}-{symbols[1]}";
@@ -68,9 +84,9 @@ namespace Awaken.Contracts.Swap
         {
             return symbols.Length switch
             {
-                2 => SortSymbols(symbols),
-                3 => GetAndSortSymbol(symbols),
-                4 => GetAndSortNftSymbol(symbols),
+                2 => SortSymbols(symbols), // FT-FT
+                3 => GetAndSortSymbol(symbols), // FT-NFT/NFT-FT
+                4 => GetAndSortNftSymbol(symbols), // NFT-NFT
                 _ => throw new AssertionException("Invalid pair list length")
             };
         }
