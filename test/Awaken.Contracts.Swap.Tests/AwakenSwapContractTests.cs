@@ -1,19 +1,15 @@
 using System.Threading.Tasks;
-using Awaken.Contracts.Swap;
 using Google.Protobuf.WellKnownTypes;
 using Xunit;
 using System;
 using System.Linq;
 using System.Threading;
-using AElf.Contracts.MultiToken;
 using AElf.ContractTestBase.ContractTestKit;
 using AElf.CSharp.Core;
 using AElf.CSharp.Core.Extension;
 using AElf.Types;
 using Shouldly;
-using Awaken.Contracts.Token;
-using Google.Protobuf.Collections;
-using Xunit.Sdk;
+using CreateInput = AElf.Contracts.MultiToken.CreateInput;
 
 namespace Awaken.Contracts.Swap.Tests
 {
@@ -504,6 +500,382 @@ namespace Awaken.Contracts.Swap.Tests
                 SymbolB = "TEST",
                 To = UserTomAddress
             });
+        }
+        
+        [Fact]
+        public async Task AddLiquidityTest_FT_NFT()
+        {
+            await Initialize();
+            const long amountADesired = 100000000;
+            const long amountBDesired = 200000000;
+            const long errorInput = 0;
+
+            #region AddLiquidity at first time
+
+            var liquidityBalanceBefore = await AdminLpStub.GetBalance.CallAsync(new Token.GetBalanceInput()
+            {
+               Symbol =  GetTokenPairSymbol("ELF","AAA-1"),
+               Owner = UserTomAddress
+            });
+            var reservesBefore = await UserTomStub.GetReserves.CallAsync(new GetReservesInput()
+            {
+                SymbolPair = {"AAA-1-ELF"}
+            });
+            var totalSupplyBefore =  await AdminLpStub.GetTokenInfo.CallAsync(new Token.GetTokenInfoInput()
+            {
+                Symbol = GetTokenPairSymbol("ELF", "AAA-1")
+            });
+            var elfBalanceBefore = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "ELF"
+            });
+            var testBalanceBefore = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "AAA-1"
+            });
+
+            await UserTomStub.AddLiquidity.SendAsync(new AddLiquidityInput()
+            {
+                AmountADesired = amountADesired,
+                AmountAMin = amountADesired,
+                AmountBDesired = amountBDesired,
+                AmountBMin = amountADesired,
+                Deadline = Timestamp.FromDateTime(DateTime.UtcNow.Add(new TimeSpan(0, 0, 3))),
+                SymbolA = "AAA-1",
+                SymbolB = "ELF",
+                To = UserTomAddress
+            });
+
+            var balanceExpect = Convert.ToInt64(Sqrt(new BigIntValue(amountADesired * amountBDesired)).Value);  
+            var reservesAfter = await UserTomStub.GetReserves.CallAsync(new GetReservesInput()
+            {
+                SymbolPair = {"AAA-1-ELF"}
+            });
+          
+            var totalSupplyAfter = await AdminLpStub.GetTokenInfo.CallAsync(new Token.GetTokenInfoInput()
+            {
+                Symbol = GetTokenPairSymbol("ELF", "AAA-1")
+            });
+            var elfBalanceAfter = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "ELF"
+            });
+            var testBalanceAfter = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "AAA-1"
+            });
+            var testContractBalance = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = AwakenSwapContractAddress,
+                Symbol = "AAA-1"
+            });
+            
+            
+            var liquidityBalanceAfter =  await AdminLpStub.GetBalance.CallAsync(new Token.GetBalanceInput()
+            {
+                Symbol =  GetTokenPairSymbol("ELF","AAA-1"),
+                Owner = UserTomAddress
+            });
+
+            reservesAfter.Results[0].ReserveA.ShouldBe(reservesBefore.Results[0].ReserveA.Add(amountADesired));
+            reservesAfter.Results[0].ReserveB.ShouldBe(reservesBefore.Results[0].ReserveB.Add(amountBDesired));
+
+            liquidityBalanceAfter.Amount
+                .ShouldBe(liquidityBalanceBefore.Amount.Add(balanceExpect));
+            totalSupplyAfter.Supply.ShouldBe(totalSupplyBefore.Supply
+                .Add(balanceExpect).Add(1));
+
+            testBalanceAfter.Balance.ShouldBe(elfBalanceBefore.Balance.Sub(amountADesired));
+            elfBalanceAfter.Balance.ShouldBe(testBalanceBefore.Balance.Sub(amountBDesired));
+            testContractBalance.Balance.ShouldBe(amountADesired);
+            #endregion
+
+            Thread.Sleep(3000);
+
+            #region AddLiquidity at second time
+
+            const long amountADesiredSecond = 100000000;
+            const long amountBDesiredSecond = 200000000;
+            const long floatAmount = 1000;
+
+            var amountBOptimal = decimal.ToInt64(Convert.ToDecimal(amountADesiredSecond) *
+                reservesAfter.Results[0].ReserveB / reservesAfter.Results[0].ReserveA);
+            var amountAOptimal = decimal.ToInt64(Convert.ToDecimal(amountBDesiredSecond) *
+                reservesAfter.Results[0].ReserveA / reservesAfter.Results[0].ReserveB);
+            
+            //success
+            await UserTomStub.AddLiquidity.SendAsync(new AddLiquidityInput()
+            {
+                AmountADesired = amountADesiredSecond.Add(floatAmount),
+                AmountAMin = amountADesiredSecond,
+                AmountBDesired = amountBDesiredSecond,
+                AmountBMin = amountBDesiredSecond,
+                Deadline = Timestamp.FromDateTime(DateTime.UtcNow.Add(new TimeSpan(0, 0, 3))),
+                SymbolA = "AAA-1",
+                SymbolB = "ELF",
+                To = UserTomAddress
+            });
+            var amountASecond = amountADesiredSecond;
+            var amountBSecond = amountBOptimal;
+            var liquidityFromElf = Convert.ToInt64(new BigIntValue(amountASecond).Mul(totalSupplyAfter.Supply).Div(reservesAfter.Results[0].ReserveA).Value);
+            var liquidityFromTest = Convert.ToInt64(new BigIntValue(amountBSecond).Mul(totalSupplyAfter.Supply).Div(reservesAfter.Results[0].ReserveB).Value);     
+      
+            var liquidityMintSecond = Math.Min(liquidityFromElf, liquidityFromTest);
+
+            var reservesAfterSecond = await UserTomStub.GetReserves.CallAsync(new GetReservesInput()
+            {
+                SymbolPair = {"AAA-1-ELF"}
+            });
+            var totalSupplyAfterSecond  = await AdminLpStub.GetTokenInfo.CallAsync(new Token.GetTokenInfoInput()
+            {
+                Symbol = GetTokenPairSymbol("ELF", "AAA-1")
+            });
+            var elfBalanceAfterSecond = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "ELF"
+            });
+            var testBalanceAfterSecond = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "AAA-1"
+            });
+            var liquidityBalanceSecond = await AdminLpStub.GetBalance.CallAsync(new Token.GetBalanceInput()
+            {
+                Symbol =  GetTokenPairSymbol("ELF","AAA-1"),
+                Owner = UserTomAddress
+            });
+
+            reservesAfterSecond.Results[0].ReserveA.ShouldBe(reservesAfter.Results[0].ReserveA.Add(amountASecond));
+            reservesAfterSecond.Results[0].ReserveB.ShouldBe(reservesAfter.Results[0].ReserveB.Add(amountBSecond));
+
+            liquidityBalanceSecond.Amount
+                .ShouldBe(liquidityBalanceAfter.Amount.Add(liquidityMintSecond));
+            totalSupplyAfterSecond.Supply.ShouldBe(totalSupplyAfter.Supply
+                .Add(liquidityMintSecond));
+
+            testBalanceAfterSecond.Balance.ShouldBe(testBalanceAfter.Balance.Sub(amountASecond));
+            elfBalanceAfterSecond.Balance.ShouldBe(elfBalanceAfter.Balance.Sub(amountBSecond));
+            //third time  to cover AddLiquidity 
+            await UserTomStub.AddLiquidity.SendAsync(new AddLiquidityInput()
+            {
+                AmountADesired = amountADesiredSecond,
+                AmountAMin = amountADesiredSecond,
+                AmountBDesired = amountBDesiredSecond.Add(floatAmount),
+                AmountBMin = amountBDesiredSecond,
+                Deadline = Timestamp.FromDateTime(DateTime.UtcNow.Add(new TimeSpan(0, 0, 3))),
+                SymbolA = "AAA-1",
+                SymbolB = "ELF",
+                To = UserTomAddress
+            });
+            var elfBalanceAfterThird = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "ELF"
+            });
+            var testBalanceAfterThird = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "AAA-1"
+            });
+
+            testBalanceAfterThird.Balance.ShouldBe(testBalanceAfterSecond.Balance.Sub(amountADesiredSecond));
+            elfBalanceAfterThird.Balance.ShouldBe(elfBalanceAfterSecond.Balance.Sub(amountBDesiredSecond));
+
+            #endregion
+            
+        }
+        
+        [Fact]
+        public async Task AddLiquidityTest_NFT_NFT()
+        {
+            await Initialize();
+            const long amountADesired = 100000000;
+            const long amountBDesired = 200000000;
+            const long errorInput = 0;
+
+            #region AddLiquidity at first time
+
+            var liquidityBalanceBefore = await AdminLpStub.GetBalance.CallAsync(new Token.GetBalanceInput()
+            {
+               Symbol =  GetTokenPairSymbol("BBB-1","AAA-1"),
+               Owner = UserTomAddress
+            });
+            var reservesBefore = await UserTomStub.GetReserves.CallAsync(new GetReservesInput()
+            {
+                SymbolPair = {"AAA-1-BBB-1"}
+            });
+            var totalSupplyBefore =  await AdminLpStub.GetTokenInfo.CallAsync(new Token.GetTokenInfoInput()
+            {
+                Symbol = GetTokenPairSymbol("BBB-1", "AAA-1")
+            });
+            var elfBalanceBefore = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "BBB-1"
+            });
+            var testBalanceBefore = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "AAA-1"
+            });
+
+            await UserTomStub.AddLiquidity.SendAsync(new AddLiquidityInput()
+            {
+                AmountADesired = amountADesired,
+                AmountAMin = amountADesired,
+                AmountBDesired = amountBDesired,
+                AmountBMin = amountADesired,
+                Deadline = Timestamp.FromDateTime(DateTime.UtcNow.Add(new TimeSpan(0, 0, 3))),
+                SymbolA = "AAA-1",
+                SymbolB = "BBB-1",
+                To = UserTomAddress
+            });
+
+            var balanceExpect = Convert.ToInt64(Sqrt(new BigIntValue(amountADesired * amountBDesired)).Value);  
+            var reservesAfter = await UserTomStub.GetReserves.CallAsync(new GetReservesInput()
+            {
+                SymbolPair = {"AAA-1-BBB-1"}
+            });
+          
+            var totalSupplyAfter = await AdminLpStub.GetTokenInfo.CallAsync(new Token.GetTokenInfoInput()
+            {
+                Symbol = GetTokenPairSymbol("BBB-1", "AAA-1")
+            });
+            var elfBalanceAfter = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "BBB-1"
+            });
+            var testBalanceAfter = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "AAA-1"
+            });
+            var testContractBalance = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = AwakenSwapContractAddress,
+                Symbol = "AAA-1"
+            });
+            
+            
+            var liquidityBalanceAfter =  await AdminLpStub.GetBalance.CallAsync(new Token.GetBalanceInput()
+            {
+                Symbol =  GetTokenPairSymbol("BBB-1","AAA-1"),
+                Owner = UserTomAddress
+            });
+
+            reservesAfter.Results[0].ReserveA.ShouldBe(reservesBefore.Results[0].ReserveA.Add(amountADesired));
+            reservesAfter.Results[0].ReserveB.ShouldBe(reservesBefore.Results[0].ReserveB.Add(amountBDesired));
+
+            liquidityBalanceAfter.Amount
+                .ShouldBe(liquidityBalanceBefore.Amount.Add(balanceExpect));
+            totalSupplyAfter.Supply.ShouldBe(totalSupplyBefore.Supply
+                .Add(balanceExpect).Add(1));
+
+            testBalanceAfter.Balance.ShouldBe(elfBalanceBefore.Balance.Sub(amountADesired));
+            elfBalanceAfter.Balance.ShouldBe(testBalanceBefore.Balance.Sub(amountBDesired));
+            testContractBalance.Balance.ShouldBe(amountADesired);
+            #endregion
+
+            Thread.Sleep(3000);
+
+            #region AddLiquidity at second time
+
+            const long amountADesiredSecond = 100000000;
+            const long amountBDesiredSecond = 200000000;
+            const long floatAmount = 1000;
+
+            var amountBOptimal = decimal.ToInt64(Convert.ToDecimal(amountADesiredSecond) *
+                reservesAfter.Results[0].ReserveB / reservesAfter.Results[0].ReserveA);
+            var amountAOptimal = decimal.ToInt64(Convert.ToDecimal(amountBDesiredSecond) *
+                reservesAfter.Results[0].ReserveA / reservesAfter.Results[0].ReserveB);
+            
+            //success
+            await UserTomStub.AddLiquidity.SendAsync(new AddLiquidityInput()
+            {
+                AmountADesired = amountADesiredSecond.Add(floatAmount),
+                AmountAMin = amountADesiredSecond,
+                AmountBDesired = amountBDesiredSecond,
+                AmountBMin = amountBDesiredSecond,
+                Deadline = Timestamp.FromDateTime(DateTime.UtcNow.Add(new TimeSpan(0, 0, 3))),
+                SymbolA = "AAA-1",
+                SymbolB = "BBB-1",
+                To = UserTomAddress
+            });
+            var amountASecond = amountADesiredSecond;
+            var amountBSecond = amountBOptimal;
+            var liquidityFromElf = Convert.ToInt64(new BigIntValue(amountASecond).Mul(totalSupplyAfter.Supply).Div(reservesAfter.Results[0].ReserveA).Value);
+            var liquidityFromTest = Convert.ToInt64(new BigIntValue(amountBSecond).Mul(totalSupplyAfter.Supply).Div(reservesAfter.Results[0].ReserveB).Value);     
+      
+            var liquidityMintSecond = Math.Min(liquidityFromElf, liquidityFromTest);
+
+            var reservesAfterSecond = await UserTomStub.GetReserves.CallAsync(new GetReservesInput()
+            {
+                SymbolPair = {"AAA-1-BBB-1"}
+            });
+            var totalSupplyAfterSecond  = await AdminLpStub.GetTokenInfo.CallAsync(new Token.GetTokenInfoInput()
+            {
+                Symbol = GetTokenPairSymbol("BBB-1", "AAA-1")
+            });
+            var elfBalanceAfterSecond = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "BBB-1"
+            });
+            var testBalanceAfterSecond = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "AAA-1"
+            });
+            var liquidityBalanceSecond = await AdminLpStub.GetBalance.CallAsync(new Token.GetBalanceInput()
+            {
+                Symbol =  GetTokenPairSymbol("BBB-1","AAA-1"),
+                Owner = UserTomAddress
+            });
+
+            reservesAfterSecond.Results[0].ReserveA.ShouldBe(reservesAfter.Results[0].ReserveA.Add(amountASecond));
+            reservesAfterSecond.Results[0].ReserveB.ShouldBe(reservesAfter.Results[0].ReserveB.Add(amountBSecond));
+
+            liquidityBalanceSecond.Amount
+                .ShouldBe(liquidityBalanceAfter.Amount.Add(liquidityMintSecond));
+            totalSupplyAfterSecond.Supply.ShouldBe(totalSupplyAfter.Supply
+                .Add(liquidityMintSecond));
+
+            testBalanceAfterSecond.Balance.ShouldBe(testBalanceAfter.Balance.Sub(amountASecond));
+            elfBalanceAfterSecond.Balance.ShouldBe(elfBalanceAfter.Balance.Sub(amountBSecond));
+            //third time  to cover AddLiquidity 
+            await UserTomStub.AddLiquidity.SendAsync(new AddLiquidityInput()
+            {
+                AmountADesired = amountADesiredSecond,
+                AmountAMin = amountADesiredSecond,
+                AmountBDesired = amountBDesiredSecond.Add(floatAmount),
+                AmountBMin = amountBDesiredSecond,
+                Deadline = Timestamp.FromDateTime(DateTime.UtcNow.Add(new TimeSpan(0, 0, 3))),
+                SymbolA = "AAA-1",
+                SymbolB = "BBB-1",
+                To = UserTomAddress
+            });
+            var elfBalanceAfterThird = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "BBB-1"
+            });
+            var testBalanceAfterThird = await TokenContractStub.GetBalance.CallAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = UserTomAddress,
+                Symbol = "AAA-1"
+            });
+
+            testBalanceAfterThird.Balance.ShouldBe(testBalanceAfterSecond.Balance.Sub(amountADesiredSecond));
+            elfBalanceAfterThird.Balance.ShouldBe(elfBalanceAfterSecond.Balance.Sub(amountBDesiredSecond));
+
+            #endregion
+            
         }
 
         [Fact]
@@ -1092,6 +1464,13 @@ namespace Awaken.Contracts.Swap.Tests
             });
             identicalException.TransactionResult.Error.ShouldContain("Identical Tokens");
           
+            //Identical Tokens
+            var exception = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
+            {
+                SymbolPair = "ELF-1"
+            });
+            exception.TransactionResult.Error.ShouldContain("Invalid symbols for sorting.");
+            
             //  
             //Invalid Tokens
              var tokensException = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
@@ -1114,6 +1493,146 @@ namespace Awaken.Contracts.Swap.Tests
             existsException.TransactionResult.Error.ShouldContain("Pair ELF-TEST Already Exist");
             var pairList = await UserTomStub.GetPairs.CallAsync(new Empty());
             pairList.Value.ShouldContain("ELF-TEST");
+        }
+        
+        /// <summary>
+        /// Legal：
+        /// AAA-BBB
+        /// AAA-1-BBB
+        /// AAA-BBB-1
+        /// AAA-1-BBB-1
+        /// sort：
+        /// BBB-1-AAA -> AAA-BBB-1
+        /// BBB-1-AAA-2 ->AAA-2-BBB-1
+        /// 
+        /// illegal：
+        /// AAA-1
+        /// AAA-BBB-C
+        /// AAA-C-BBB
+        /// AAA-1-BBB-C
+        /// AAA-C-BBB-1
+        /// 1-AAA
+        /// 1-2-3-4
+        /// 
+        /// </summary>
+
+        [Fact]
+        public async Task CreatePair_NFT_Test()
+        {
+            await CreateAndGetToken();
+            await AdminLpStub.Initialize.SendAsync(new Token.InitializeInput()
+            {
+                Owner = AwakenSwapContractAddress
+            });
+            await AwakenSwapContractStub.Initialize.SendAsync(new InitializeInput()
+            {
+                Admin = AdminAddress,
+                AwakenTokenContractAddress = LpTokentContractAddress
+            });
+            //illegal
+            await UserTomStub.CreatePair.SendAsync(new CreatePairInput
+            {
+                SymbolPair = "ELF-AAA-1"
+            });
+            var pairList1 = await UserTomStub.GetPairs.CallAsync(new Empty());
+            pairList1.Value.ShouldContain("AAA-1-ELF");
+            var result = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput
+            {
+                SymbolPair = "AAA-1-ELF"
+            });
+            result.TransactionResult.Error.ShouldContain("Pair AAA-1-ELF Already Exist");
+            {
+                await UserTomStub.CreatePair.SendAsync(new CreatePairInput
+                {
+                    SymbolPair = "AAA-1-BBB-1"
+                });
+                var pairList2 = await UserTomStub.GetPairs.CallAsync(new Empty());
+                pairList2.Value.ShouldContain("AAA-1-BBB-1");
+            }
+            
+            {
+                await UserTomStub.CreatePair.SendAsync(new CreatePairInput
+                {
+                    SymbolPair = "BBB-1-DAI"
+                });
+                var pairList2 = await UserTomStub.GetPairs.CallAsync(new Empty());
+                pairList2.Value.ShouldContain("BBB-1-DAI");
+            }
+
+            {
+                //Invalid TokenPair
+                var executionResult = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
+                {
+                    SymbolPair = "ELF-1"
+                });
+                executionResult.TransactionResult.Error.ShouldContain("Invalid symbols for sorting.");
+            }
+            {
+                //Identical Tokens
+                var executionResult = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
+                {
+                    SymbolPair = "AAA-BBB-CF"
+                });
+                executionResult.TransactionResult.Error.ShouldContain("Token AAA not exists.");
+            }
+            {
+                //Invalid Tokens
+                var executionResult = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
+                {
+                    SymbolPair = "AAA-1-BBB-C"
+                });
+                executionResult.TransactionResult.Error.ShouldContain("Token BBB-C not exists.");
+            }
+            {
+                //Invalid Tokens
+                var executionResult = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
+                {
+                    SymbolPair = "AAA-C-BBB-1"
+                });
+                executionResult.TransactionResult.Error.ShouldContain("Token AAA-C not exists.");
+            }
+            {
+                //Invalid Tokens
+                var executionResult = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
+                {
+                    SymbolPair = "1-AAA"
+                });
+                executionResult.TransactionResult.Error.ShouldContain("Invalid symbols for sorting.");
+            }
+            
+            {
+                //Invalid Tokens
+                var executionResult = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
+                {
+                    SymbolPair = "1-2-3"
+                });
+                executionResult.TransactionResult.Error.ShouldContain("Invalid symbols for sorting.");
+            }
+            
+            {
+                //Invalid Tokens
+                var executionResult = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
+                {
+                    SymbolPair = "1-2-3-4"
+                });
+                executionResult.TransactionResult.Error.ShouldContain("Token 1-2 not exists.");
+            }
+            {
+                //Invalid Tokens
+                var executionResult = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
+                {
+                    SymbolPair = "1-ELF-3"
+                });
+                executionResult.TransactionResult.Error.ShouldContain("Invalid symbols for sorting.");
+            }
+            {
+                //Invalid Tokens
+                var executionResult = await UserTomStub.CreatePair.SendWithExceptionAsync(new CreatePairInput()
+                {
+                    SymbolPair = "1-AAA-1-4"
+                });
+                executionResult.TransactionResult.Error.ShouldContain("Token 1-4 not exists.");
+            }
         }
 
         [Fact]
@@ -1493,18 +2012,16 @@ namespace Awaken.Contracts.Swap.Tests
         
         private async Task CreateAndGetToken()
         {
-            //TEST
-            var result = await TokenContractStub.Create.SendAsync(new AElf.Contracts.MultiToken.CreateInput
+            var res = await CreateMutiTokenAsync(TokenContractImplStub, new CreateInput
             {
-                Issuer = AdminAddress,
                 Symbol = "TEST",
+                TokenName = "TEST",
+                TotalSupply = 100000000000000,
                 Decimals = 8,
-                IsBurnable = true,
-                TokenName = "TEST symbol",
-                TotalSupply = 100000000_00000000
+                Issuer = AdminAddress,
+                Owner = AdminAddress,
             });
-
-            result.TransactionResult.Status.ShouldBe(TransactionResultStatus.Mined);
+            res.TransactionResult.Status.ShouldBe(TransactionResultStatus.Mined);
 
             var issueResult = await TokenContractStub.Issue.SendAsync(new AElf.Contracts.MultiToken.IssueInput
             {
@@ -1520,18 +2037,18 @@ namespace Awaken.Contracts.Swap.Tests
             });
             balance.Output.Balance.ShouldBe(100000000000000);
             //DAI
-            var result2 = await TokenContractStub.Create.SendAsync(new AElf.Contracts.MultiToken.CreateInput
+            
+            var res1 = await CreateMutiTokenAsync(TokenContractImplStub, new CreateInput
             {
-                Issuer = AdminAddress,
                 Symbol = "DAI",
+                TokenName = "DAI",
+                TotalSupply = 100000000000000,
                 Decimals = 10,
-                IsBurnable = true,
-                TokenName = "DAI symbol",
-                TotalSupply = 100000000_00000000
+                Issuer = AdminAddress,
+                Owner = AdminAddress,
             });
-
-            result2.TransactionResult.Status.ShouldBe(TransactionResultStatus.Mined);
-
+            res1.TransactionResult.Status.ShouldBe(TransactionResultStatus.Mined);
+           
             var issueResult2 = await TokenContractStub.Issue.SendAsync(new AElf.Contracts.MultiToken.IssueInput
             {
                 Amount = 100000000000000,
@@ -1580,6 +2097,108 @@ namespace Awaken.Contracts.Swap.Tests
                 Memo = "Recharge",
                 To = UserTomAddress
             });
+
+
+            var res4 = await CreateMutiTokenAsync(TokenContractImplStub, new CreateInput
+            {
+                Symbol = "AAA-0",
+                TokenName = "AAA-0",
+                TotalSupply = 100000000000000,
+                Decimals = 0,
+                Issuer = AdminAddress,
+                Owner = AdminAddress,
+            });
+            res4.TransactionResult.Status.ShouldBe(TransactionResultStatus.Mined);
+            
+            var res3 = await TokenContractStub.Create.SendAsync(new CreateInput
+            {
+                Symbol = "AAA-1",
+                TokenName = "AAA-1",
+                TotalSupply = 100000000000000,
+                Decimals = 0,
+                Issuer = AdminAddress,
+                Owner = AdminAddress,
+            });
+            res3.TransactionResult.Status.ShouldBe(TransactionResultStatus.Mined);
+
+            var issueResult3 = await TokenContractStub.Issue.SendAsync(new AElf.Contracts.MultiToken.IssueInput
+            {
+                Amount = 100000000000000,
+                Symbol = "AAA-1",
+                To = AdminAddress
+            });
+            issueResult3.TransactionResult.Status.ShouldBe(TransactionResultStatus.Mined);
+            var balance3 = await TokenContractStub.GetBalance.SendAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = AdminAddress,
+                Symbol = "AAA-1"
+            });
+            balance3.Output.Balance.ShouldBe(100000000000000);
+            await TokenContractStub.Transfer.SendAsync(new AElf.Contracts.MultiToken.TransferInput()
+            {
+                Amount = 100000000000,
+                Symbol = "AAA-1",
+                Memo = "Recharge",
+                To = UserTomAddress
+            });
+            await TokenContractStub.Transfer.SendAsync(new AElf.Contracts.MultiToken.TransferInput()
+            {
+                Amount = 100000000000,
+                Symbol = "AAA-1",
+                Memo = "Recharge",
+                To = UserLilyAddress
+            });
+            
+            var res5 = await CreateMutiTokenAsync(TokenContractImplStub, new CreateInput
+            {
+                Symbol = "BBB-0",
+                TokenName = "BBB-0",
+                TotalSupply = 100000000000000,
+                Decimals = 0,
+                Issuer = AdminAddress,
+                Owner = AdminAddress,
+            });
+            res5.TransactionResult.Status.ShouldBe(TransactionResultStatus.Mined);
+            
+            var res6 = await TokenContractStub.Create.SendAsync(new CreateInput
+            {
+                Symbol = "BBB-1",
+                TokenName = "BBB-1",
+                TotalSupply = 100000000000000,
+                Decimals = 0,
+                Issuer = AdminAddress,
+                Owner = AdminAddress,
+            });
+            res6.TransactionResult.Status.ShouldBe(TransactionResultStatus.Mined);
+
+            var issueResult4 = await TokenContractStub.Issue.SendAsync(new AElf.Contracts.MultiToken.IssueInput
+            {
+                Amount = 100000000000000,
+                Symbol = "BBB-1",
+                To = AdminAddress
+            });
+            issueResult4.TransactionResult.Status.ShouldBe(TransactionResultStatus.Mined);
+            var balance4 = await TokenContractStub.GetBalance.SendAsync(new AElf.Contracts.MultiToken.GetBalanceInput()
+            {
+                Owner = AdminAddress,
+                Symbol = "BBB-1"
+            });
+            balance4.Output.Balance.ShouldBe(100000000000000);
+            await TokenContractStub.Transfer.SendAsync(new AElf.Contracts.MultiToken.TransferInput()
+            {
+                Amount = 100000000000,
+                Symbol = "BBB-1",
+                Memo = "Recharge",
+                To = UserTomAddress
+            });
+            await TokenContractStub.Transfer.SendAsync(new AElf.Contracts.MultiToken.TransferInput()
+            {
+                Amount = 100000000000,
+                Symbol = "BBB-1",
+                Memo = "Recharge",
+                To = UserLilyAddress
+            });
+            
             //authorize  Tom and Lily and admin to transfer ELF and TEST and DAI to FinanceContract
             await UserTomTokenContractStub.Approve.SendAsync(new AElf.Contracts.MultiToken.ApproveInput()
             {
@@ -1623,6 +2242,42 @@ namespace Awaken.Contracts.Swap.Tests
                 Spender = AwakenSwapContractAddress,
                 Symbol = "TEST"
             });
+            await TokenContractStub.Approve.SendAsync(new AElf.Contracts.MultiToken.ApproveInput()
+            {
+                Amount = 100000000000,
+                Spender = AwakenSwapContractAddress,
+                Symbol = "AAA-1"
+            });
+            await UserTomTokenContractStub.Approve.SendAsync(new AElf.Contracts.MultiToken.ApproveInput()
+            {
+                Amount = 100000000000,
+                Spender = AwakenSwapContractAddress,
+                Symbol = "AAA-1"
+            });
+            await UserLilyTokenContractStub.Approve.SendAsync(new AElf.Contracts.MultiToken.ApproveInput()
+            {
+                Amount = 100000000000,
+                Spender = AwakenSwapContractAddress,
+                Symbol = "AAA-1"
+            });
+            await TokenContractStub.Approve.SendAsync(new AElf.Contracts.MultiToken.ApproveInput()
+            {
+                Amount = 100000000000,
+                Spender = AwakenSwapContractAddress,
+                Symbol = "BBB-1"
+            });
+            await UserTomTokenContractStub.Approve.SendAsync(new AElf.Contracts.MultiToken.ApproveInput()
+            {
+                Amount = 100000000000,
+                Spender = AwakenSwapContractAddress,
+                Symbol = "BBB-1"
+            });
+            await UserLilyTokenContractStub.Approve.SendAsync(new AElf.Contracts.MultiToken.ApproveInput()
+            {
+                Amount = 100000000000,
+                Spender = AwakenSwapContractAddress,
+                Symbol = "BBB-1"
+            });
         }
 
         private async Task Initialize()
@@ -1646,6 +2301,19 @@ namespace Awaken.Contracts.Swap.Tests
             await UserTomStub.CreatePair.SendAsync(new CreatePairInput()
             {
                 SymbolPair = "ELF-DAI"
+            });
+            
+            await UserTomStub.CreatePair.SendAsync(new CreatePairInput()
+            {
+                SymbolPair = "ELF-AAA-1"
+            });
+            await UserTomStub.CreatePair.SendAsync(new CreatePairInput()
+            {
+                SymbolPair = "BBB-1-ELF"
+            });
+            await UserTomStub.CreatePair.SendAsync(new CreatePairInput()
+            {
+                SymbolPair = "AAA-1-BBB-1"
             });
         }
 
