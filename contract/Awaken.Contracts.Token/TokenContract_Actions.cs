@@ -46,7 +46,21 @@ namespace Awaken.Contracts.Token
             return new Empty();
         }
 
-        
+        public override Empty AddCallTransferFromAddress(Address input)
+        {
+            Assert(State.Admin.Value==Context.Sender, "No permission to add address.");
+       
+            State.WhiteList.Value.Value.Add(input);
+            return new Empty();
+        }
+
+        public override Empty SetAdmin(Address input)
+        {
+            Assert(State.Owner.Value == Context.Sender, "No permission to set admin.");
+            State.Admin.Value = input;
+            return new Empty();
+        }
+
         public override Empty Issue(IssueInput input)
         {
             if (input.Amount <= 0) return new Empty();
@@ -70,6 +84,7 @@ namespace Awaken.Contracts.Token
             return new Empty();
         }
 
+
         public override Empty Transfer(TransferInput input)
         {
             if (input.Amount <= 0) return new Empty();
@@ -88,6 +103,7 @@ namespace Awaken.Contracts.Token
 
         public override Empty TransferFrom(TransferFromInput input)
         {
+            Assert(State.WhiteList.Value.Value.Contains(Context.Sender), "Sender is not in white list");
             if (input.Amount <= 0) return new Empty();
             ValidTokenExisting(input.Symbol);
             var allowance = State.AllowanceMap[input.From][Context.Sender][input.Symbol];
