@@ -48,15 +48,29 @@ namespace Awaken.Contracts.Token
 
         public override Empty AddCallTransferFromAddress(Address input)
         {
-            Assert(State.Admin.Value==Context.Sender, "No permission to add address.");
-       
+            if (State.Admin.Value == null)
+            {
+                Assert(State.GenesisContract.GetContractAuthor.Call(Context.Self) == Context.Sender,
+                    "No permission to add address.");
+            }
+            else
+            {
+                Assert(State.Admin.Value == Context.Sender, "No permission to add address.");
+            }
+
+            if (State.WhiteList.Value == null)
+            {
+                State.WhiteList.Value = new WhiteList();
+            }
+
             State.WhiteList.Value.Value.Add(input);
             return new Empty();
         }
 
         public override Empty SetAdmin(Address input)
         {
-            Assert(State.Owner.Value == Context.Sender, "No permission to set admin.");
+            var auth = State.GenesisContract.GetContractAuthor.Call(Context.Self);
+            Assert(auth == Context.Sender, "No permission to set admin.");
             State.Admin.Value = input;
             return new Empty();
         }
