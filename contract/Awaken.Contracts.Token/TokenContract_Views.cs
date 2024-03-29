@@ -5,7 +5,7 @@ namespace Awaken.Contracts.Token
 {
     public partial class TokenContract
     {
-        public override WhiteList GetCallTransferFromWhiteList(Empty input)
+        public override WhiteList GetWhiteList(Empty input)
         {
             return State.WhiteList.Value;
         }

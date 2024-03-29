@@ -1,4 +1,5 @@
 using System;
+using AElf;
 using AElf.CSharp.Core;
 using AElf.Sdk.CSharp;
 using AElf.Types;
@@ -46,7 +47,19 @@ namespace Awaken.Contracts.Token
             return new Empty();
         }
 
-        public override Empty AddCallTransferFromAddress(Address input)
+        public override Empty AddWhiteList(Address input)
+        {
+            Assert(input != null && !input.Value.IsNullOrEmpty(), "Invalid input.");
+            ValidPermission();
+            State.WhiteList.Value ??= new WhiteList();
+            Assert(!State.WhiteList.Value.Value.Contains(input), "Address is exist");
+
+            State.WhiteList.Value.Value.Add(input);
+
+            return new Empty();
+        }
+
+        private void ValidPermission()
         {
             if (State.Admin.Value == null)
             {
@@ -57,20 +70,12 @@ namespace Awaken.Contracts.Token
             {
                 Assert(State.Admin.Value == Context.Sender, "No permission to add address.");
             }
-
-            if (State.WhiteList.Value == null)
-            {
-                State.WhiteList.Value = new WhiteList();
-            }
-
-            State.WhiteList.Value.Value.Add(input);
-            return new Empty();
         }
 
         public override Empty SetAdmin(Address input)
         {
-            var auth = State.GenesisContract.GetContractAuthor.Call(Context.Self);
-            Assert(auth == Context.Sender, "No permission to set admin.");
+            Assert(input != null && !input.Value.IsNullOrEmpty(), "Invalid input.");
+            ValidPermission();
             State.Admin.Value = input;
             return new Empty();
         }
@@ -117,7 +122,11 @@ namespace Awaken.Contracts.Token
 
         public override Empty TransferFrom(TransferFromInput input)
         {
-            Assert(State.WhiteList.Value.Value.Contains(Context.Sender), "Sender is not in white list");
+            if (State.WhiteList.Value != null && State.WhiteList.Value.Value.Count > 0)
+            {
+                Assert(State.WhiteList.Value.Value.Contains(Context.Sender), "Sender is not in white list");
+            }
+
             if (input.Amount <= 0) return new Empty();
             ValidTokenExisting(input.Symbol);
             var allowance = State.AllowanceMap[input.From][Context.Sender][input.Symbol];

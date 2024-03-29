@@ -19,25 +19,28 @@ namespace Awaken.Contracts.Swap.Tests
         public async Task CompleteFlowTest()
         {
             await CreateAndGetToken();
-            
+
 
             await AdminLpStub.Initialize.SendAsync(new Token.InitializeInput()
             {
                 Owner = AwakenSwapContractAddress
             });
-            
+
             await AwakenSwapContractStub.Initialize.SendAsync(new InitializeInput()
             {
                 Admin = AdminAddress,
                 AwakenTokenContractAddress = LpTokentContractAddress
             });
-            
+
             await AdminLpStub.SetAdmin.SendAsync(AdminAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(AdminAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(UserTomAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(UserLilyAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(AwakenSwapContractAddress);
+            await AdminLpStub.AddWhiteList.SendAsync(AwakenSwapContractAddress);
+
+            var noPermissionException= await TomLpStub.SetAdmin.SendWithExceptionAsync(UserTomAddress);
+            noPermissionException.TransactionResult.Error.ShouldContain("no permission");
             
+            var existException = await AdminLpStub.AddWhiteList.SendWithExceptionAsync(AwakenSwapContractAddress);
+            existException.TransactionResult.Error.ShouldContain("exist");
+
             await AwakenSwapContractStub.SetFeeRate.SendAsync(new Int64Value() { Value = 30 });
             var feeRate = await AwakenSwapContractStub.GetFeeRate.CallAsync(new Empty());
             feeRate.Value.ShouldBe((30));
@@ -935,18 +938,9 @@ namespace Awaken.Contracts.Swap.Tests
             const long liquidityRemove = 200000000;
             const long floatAmount = 10000;
             const long errorInput = 0;
-            
-            await AdminLpStub.SetAdmin.SendAsync(AdminAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(AdminAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(UserTomAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(UserLilyAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(AwakenSwapContractAddress);
-            // await AdminLpStub.AddCallTransferFromAddress.CallAsync(UserTomAddress);
-            
-            // await TomLpStub.SetAdmin.SendAsync(UserTomAddress);
-            // await TomLpStub.AddCallTransferFromAddress.SendAsync(UserTomAddress);
-            // await AdminLpStub.AddCallTransferFromAddress.CallAsync(UserTomAddress);
-            
+
+
+
             await TomLpStub.Approve.SendAsync(new Token.ApproveInput()
             {
                 Symbol = "ALP ELF-TEST",
@@ -1164,13 +1158,13 @@ namespace Awaken.Contracts.Swap.Tests
             const long liquidityRemove = 200000000;
             const long floatAmount = 10000;
             const long errorInput = 0;
-            
+
             await AdminLpStub.SetAdmin.SendAsync(AdminAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(AdminAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(UserTomAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(UserLilyAddress);
-            await AdminLpStub.AddCallTransferFromAddress.SendAsync(AwakenSwapContractAddress);
-            
+            await AdminLpStub.AddWhiteList.SendAsync(AdminAddress);
+            await AdminLpStub.AddWhiteList.SendAsync(UserTomAddress);
+            await AdminLpStub.AddWhiteList.SendAsync(UserLilyAddress);
+            await AdminLpStub.AddWhiteList.SendAsync(AwakenSwapContractAddress);
+
             await TomLpStub.Approve.SendAsync(new Token.ApproveInput()
             {
                 Symbol = "ALP ELF-TEST",

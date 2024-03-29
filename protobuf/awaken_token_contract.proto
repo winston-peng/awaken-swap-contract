@@ -39,7 +39,7 @@ service TokenContract {
     }
     rpc AddMinter (aelf.Address) returns (google.protobuf.Empty) {
     }
-    rpc AddCallTransferFromAddress (aelf.Address) returns (google.protobuf.Empty) {
+    rpc AddWhiteList (aelf.Address) returns (google.protobuf.Empty) {
     }
     rpc SetAdmin (aelf.Address) returns (google.protobuf.Empty) {
     }
@@ -48,7 +48,7 @@ service TokenContract {
 
   
     // Views
-    rpc GetCallTransferFromWhiteList (google.protobuf.Empty) returns (WhiteList) {
+    rpc GetWhiteList (google.protobuf.Empty) returns (WhiteList) {
         option (aelf.is_view) = true;
     }
     rpc GetAdmin (google.protobuf.Empty) returns (aelf.Address) {
