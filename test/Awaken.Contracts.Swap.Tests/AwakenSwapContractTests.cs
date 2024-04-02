@@ -2437,5 +2437,30 @@ namespace Awaken.Contracts.Swap.Tests
         {
             return symbols.OrderBy(s => s).ToArray();
         }
+
+        [Fact]
+        public async Task RemoveWhiteList()
+        {
+            await Initialize();
+            await AdminLpStub.SetAdmin.SendAsync(DefaultAddress);
+            var executionResult1 = await AdminLpStub.RemoveWhiteList.SendWithExceptionAsync(UserTomAddress);
+            executionResult1.TransactionResult.Error.ShouldContain("Address not exist");
+            await AdminLpStub.AddWhiteList.SendAsync(AwakenSwapContractAddress);
+            await AdminLpStub.AddWhiteList.SendAsync(UserTomAddress);
+            {
+                var whiteList = await AdminLpStub.GetWhiteList.CallAsync(new Empty());
+                whiteList.Value.Count.ShouldBe(2);
+                whiteList.Value[0].ShouldBe(AwakenSwapContractAddress);
+                whiteList.Value[1].ShouldBe(UserTomAddress);
+            }
+            await AdminLpStub.RemoveWhiteList.SendAsync(UserTomAddress);
+            {
+                var whiteList = await AdminLpStub.GetWhiteList.CallAsync(new Empty());
+                whiteList.Value.Count.ShouldBe(1);
+                whiteList.Value[0].ShouldBe(AwakenSwapContractAddress);
+            }
+            var executionResult = await AdminLpStub.RemoveWhiteList.SendWithExceptionAsync(UserTomAddress);
+            executionResult.TransactionResult.Error.ShouldContain("Address not exist");
+        }
     }
 }

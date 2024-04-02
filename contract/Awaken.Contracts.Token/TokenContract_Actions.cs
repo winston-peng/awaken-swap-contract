@@ -59,6 +59,15 @@ namespace Awaken.Contracts.Token
             return new Empty();
         }
 
+        public override Empty RemoveWhiteList(Address input)
+        {
+            Assert(input != null && !input.Value.IsNullOrEmpty(), "Invalid input.");
+            ValidPermission();
+            Assert(State.WhiteList.Value != null && State.WhiteList.Value.Value.Contains(input), "Address not exist");
+            State.WhiteList.Value?.Value.Remove(input);
+            return new Empty();
+        }
+
         private void ValidPermission()
         {
             if (State.Admin.Value == null)

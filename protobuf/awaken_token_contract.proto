@@ -41,6 +41,8 @@ service TokenContract {
     }
     rpc AddWhiteList (aelf.Address) returns (google.protobuf.Empty) {
     }
+    rpc RemoveWhiteList (aelf.Address) returns (google.protobuf.Empty) {
+    }
     rpc SetAdmin (aelf.Address) returns (google.protobuf.Empty) {
     }
     rpc RemoveMinter (aelf.Address) returns (google.protobuf.Empty) {
