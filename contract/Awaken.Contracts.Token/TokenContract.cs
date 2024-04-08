@@ -4,6 +4,7 @@ namespace Awaken.Contracts.Token
 {
     public partial class TokenContract : TokenContractContainer.TokenContractBase
     {
+        // fee rate 0.05
         public override Empty Initialize(InitializeInput input)
         {
             Assert(!State.IsInitialized.Value, "Already initialized.");
